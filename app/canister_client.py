@@ -9,7 +9,7 @@ import json
 import logging
 import os
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +24,19 @@ DFX_CALL_TEMPLATE = os.environ.get(
 
 def _candid_text(value: str) -> str:
     """Return a Candid text literal, safely quoted for dfx."""
-    escaped = value.replace('\\', '\\\\').replace('"', '\\"')
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
 
 
-def call_extension(canister_id: str, extension_name: str, method_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def call_extension(
+    canister_id: str,
+    extension_name: str,
+    method_name: str,
+    args: Dict[str, Any],
+) -> Dict[str, Any]:
     """Call a realm extension method via dfx and return the parsed JSON response."""
     if not canister_id:
-        return {"success": False, "error": " REALM_CANISTER_ID not configured"}
+        return {"success": False, "error": "REALM_CANISTER_ID not configured"}
 
     identity_flag = f"--identity {DFX_IDENTITY}" if DFX_IDENTITY else ""
     base = DFX_CALL_TEMPLATE.format(
@@ -63,6 +68,16 @@ def call_extension(canister_id: str, extension_name: str, method_name: str, args
     except json.JSONDecodeError as exc:
         logger.error(f"Could not parse dfx output: {exc}")
         return {"success": False, "error": "Invalid JSON from dfx"}
+
+
+def get_email_config(canister_id: str) -> Dict[str, Any]:
+    """Fetch the realm's email configuration."""
+    return call_extension(
+        canister_id,
+        "realm_settings",
+        "get_email_config",
+        {},
+    )
 
 
 def get_pending_email_notifications(canister_id: str) -> Dict[str, Any]:

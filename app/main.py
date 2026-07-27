@@ -1,22 +1,24 @@
 """Realms Email Worker.
 
 A standalone off-chain service that sends outbound email for Realms GOS realms.
-SMTP credentials and the realm canister ID are configured via environment
-variables so secrets never live in the realm canister.
+Resend is the recommended provider; SMTP is supported as a fallback. All
+secrets live in environment variables, never in the realm canister.
 
 Endpoints:
-  POST /send-email   - Send a single email immediately.
-  GET  /health       - Health check.
+  POST /send-email        - Send a single email immediately.
+  POST /webhooks/resend   - Resend bounce/complaint/delivery webhooks.
+  GET  /health            - Health check.
 """
 
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.email_bounce import handle_resend_webhook
 from app.email_worker import start_email_worker
 from app.email_sender import send_email
 
@@ -30,7 +32,8 @@ logger = logging.getLogger(__name__)
 class SendEmailRequest(BaseModel):
     to: str = Field(..., description="Recipient email address")
     subject: str = Field(..., description="Email subject")
-    body: str = Field(..., description="Plain text body")
+    text: str = Field(..., description="Plain text body")
+    html: str = Field("", description="Optional HTML body")
     from_name: str = Field("", description="Display name for the From header")
     from_address: str = Field("", description="From email address")
     reply_to: str = Field("", description="Reply-To address")
@@ -46,7 +49,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Realms Email Worker",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -71,7 +74,8 @@ async def send_email_endpoint(payload: SendEmailRequest) -> Dict[str, Any]:
         result = send_email(
             to=payload.to,
             subject=payload.subject,
-            body=payload.body,
+            text=payload.text,
+            html=payload.html,
             from_name=payload.from_name,
             from_address=payload.from_address,
             reply_to=payload.reply_to,
@@ -83,4 +87,16 @@ async def send_email_endpoint(payload: SendEmailRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Unexpected error sending email")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/webhooks/resend")
+async def resend_webhook(request: Request) -> Dict[str, Any]:
+    """Receive Resend bounce/complaint/delivery events."""
+    try:
+        payload = await request.json()
+        await handle_resend_webhook(payload)
+        return {"success": True}
+    except Exception as exc:
+        logger.exception("Error handling Resend webhook")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
