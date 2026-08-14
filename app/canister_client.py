@@ -18,7 +18,11 @@ DFX_IDENTITY = os.environ.get("DFX_IDENTITY", "")
 DFX_NETWORK = os.environ.get("DFX_NETWORK", "local")
 DFX_CALL_TEMPLATE = os.environ.get(
     "EMAIL_WORKER_DFX_CALL_TEMPLATE",
-    "dfx {identity} canister --network {network} call {canister}",
+    "dfx --run-deprecated {identity} canister --network {network} call --output json {canister}",
+)
+CANISTER_CANDID_PATH = os.environ.get(
+    "CANISTER_CANDID_PATH",
+    "/srv/dev/realms/src/realm_backend/realm_backend.did",
 )
 
 
@@ -26,6 +30,24 @@ def _candid_text(value: str) -> str:
     """Return a Candid text literal, safely quoted for dfx."""
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _parse_extension_output(stdout: str) -> Dict[str, Any]:
+    """Unwrap dfx JSON ``{success, response}`` into the extension payload."""
+    outer = json.loads(stdout)
+    if not isinstance(outer, dict):
+        return {"success": False, "error": "Unexpected dfx JSON"}
+    if outer.get("success") is False:
+        return outer
+    response = outer.get("response", outer)
+    if isinstance(response, str):
+        try:
+            response = json.loads(response)
+        except json.JSONDecodeError:
+            return {"success": False, "error": response}
+    if isinstance(response, dict):
+        return response
+    return {"success": True, "data": response}
 
 
 def call_extension(
@@ -40,30 +62,27 @@ def call_extension(
         return {"success": False, "error": "REALM_CANISTER_ID not configured"}
 
     identity_flag = f"--identity {DFX_IDENTITY}" if DFX_IDENTITY else ""
+    # `--query` is a flag on `call`, so it must sit before the canister id:
+    #   dfx ... call --output json --query CANISTER extension_call ...
+    canister_token = f"--query {canister_id}" if query else canister_id
     base = DFX_CALL_TEMPLATE.format(
         identity=identity_flag,
         network=DFX_NETWORK,
-        canister=canister_id,
+        canister=canister_token,
     )
-    # `--query` is a flag on `call`, so it must sit before the canister id:
-    #   dfx ... call --query CANISTER extension_call ...
-    # not `call CANISTER --query extension_call`.
-    args_json = json.dumps(args)
-    if query:
-        base = DFX_CALL_TEMPLATE.format(
-            identity=identity_flag,
-            network=DFX_NETWORK,
-            canister=f"--query {canister_id}",
-        )
-        method = "extension_call"
-    else:
-        method = "extension_sync_call"
-    cmd = base.split() + [
-        method,
-        _candid_text(extension_name),
-        _candid_text(method_name),
-        _candid_text(args_json),
-    ]
+    method = "extension_call" if query else "extension_sync_call"
+    candid_arg = (
+        f"({_candid_text(extension_name)}, "
+        f"{_candid_text(method_name)}, "
+        f"{_candid_text(json.dumps(args))})"
+    )
+    cmd = base.split() + [method, candid_arg]
+
+    env = os.environ.copy()
+    env.setdefault("TERM", "xterm")
+    env.setdefault("DFX_WARNING", "-mainnet_plaintext_identity")
+    if CANISTER_CANDID_PATH:
+        env.setdefault("CANISTER_CANDID_PATH", CANISTER_CANDID_PATH)
 
     logger.debug(f"Running dfx command: {' '.join(cmd)}")
     try:
@@ -73,8 +92,10 @@ def call_extension(
             text=True,
             check=True,
             timeout=60,
+            env=env,
+            cwd=os.environ.get("DFX_PROJECT_ROOT", "/srv/dev/realms"),
         )
-        return json.loads(result.stdout)
+        return _parse_extension_output(result.stdout)
     except subprocess.CalledProcessError as exc:
         logger.error(f"dfx call failed: {exc.stderr}")
         return {"success": False, "error": exc.stderr}

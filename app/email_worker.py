@@ -35,16 +35,25 @@ def _get_email_config(canister_id: str) -> Dict[str, Any]:
 def _process_pending(canister_id: str) -> None:
     """Fetch pending emails from the canister and send them."""
     email_config = _get_email_config(canister_id)
-    if not email_config.get("enabled"):
-        logger.debug("Email notifications disabled for this realm")
-        return
+    # The canister already decides what to queue. Drain anything pending,
+    # including admin tests and verification mail, even when the realm
+    # master switch is off.
 
     pending = get_pending_email_notifications(canister_id)
     if not pending.get("success"):
         logger.warning(f"Could not fetch pending emails: {pending.get('error')}")
         return
 
-    notifications = pending.get("data", {}).get("notifications", [])[:MAX_EMAILS_PER_POLL]
+    payload = pending.get("data", pending)
+    if isinstance(payload, list):
+        notifications = payload
+    elif isinstance(payload, dict):
+        notifications = payload.get("notifications", [])
+        if isinstance(notifications, dict):
+            notifications = notifications.get("notifications", [])
+    else:
+        notifications = []
+    notifications = notifications[:MAX_EMAILS_PER_POLL]
     if not notifications:
         return
 
