@@ -33,6 +33,7 @@ def call_extension(
     extension_name: str,
     method_name: str,
     args: Dict[str, Any],
+    query: bool = False,
 ) -> Dict[str, Any]:
     """Call a realm extension method via dfx and return the parsed JSON response."""
     if not canister_id:
@@ -44,9 +45,21 @@ def call_extension(
         network=DFX_NETWORK,
         canister=canister_id,
     )
+    # `--query` is a flag on `call`, so it must sit before the canister id:
+    #   dfx ... call --query CANISTER extension_call ...
+    # not `call CANISTER --query extension_call`.
     args_json = json.dumps(args)
+    if query:
+        base = DFX_CALL_TEMPLATE.format(
+            identity=identity_flag,
+            network=DFX_NETWORK,
+            canister=f"--query {canister_id}",
+        )
+        method = "extension_call"
+    else:
+        method = "extension_sync_call"
     cmd = base.split() + [
-        "extension_sync_call",
+        method,
         _candid_text(extension_name),
         _candid_text(method_name),
         _candid_text(args_json),
@@ -77,6 +90,7 @@ def get_email_config(canister_id: str) -> Dict[str, Any]:
         "realm_settings",
         "get_email_config",
         {},
+        query=True,
     )
 
 
@@ -87,6 +101,7 @@ def get_pending_email_notifications(canister_id: str) -> Dict[str, Any]:
         "notifications",
         "get_pending_email_notifications",
         {},
+        query=True,
     )
 
 

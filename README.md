@@ -100,8 +100,11 @@ Health check.
 Default HTML templates live in `app/templates/`:
 
 - `default.html` — fallback for any event type
+- `email_verification.html` — email address verification codes
 - `proposal_created.html` — new proposal notifications
 - `vote_reminder.html` — voting reminders
+
+Canister reads use `dfx ... call --query extension_call`; writes use `extension_sync_call`.
 
 Templates are Jinja2 and receive these variables:
 
