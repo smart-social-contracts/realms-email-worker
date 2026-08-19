@@ -15,6 +15,7 @@ from app.canister_client import (
 from app.email_bounce import is_suppressed
 from app.email_sender import send_email
 from app.templates import render_email
+from app.urls import absolute_href, resolve_email_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,9 @@ def _process_pending(canister_id: str) -> None:
 
         # Add realm logo to notification variables if not already present.
         notification.setdefault("logo_url", email_config.get("logo_url", ""))
+
+        base_url = resolve_email_base_url(email_config, notification)
+        notification["href"] = absolute_href(notification.get("href", ""), base_url)
 
         rendered = render_email(event_type, email_config, notification)
         try:

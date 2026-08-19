@@ -63,6 +63,7 @@ Before sending real email:
 | `SMTP_PASSWORD` | SMTP password | - |
 | `ALERT_EMAIL_FROM` | Default From address | `noreply@notify.realmsgos.dev` |
 | `REALM_CANISTER_ID` | Realm canister to poll | - |
+| `REALM_PUBLIC_URL` | Public realm URL for email links (e.g. `https://gos.earth/r/myrealm`) | - |
 | `DFX_NETWORK` | dfx network for canister calls | `local` |
 | `DFX_IDENTITY` | Optional dfx identity flag | - |
 | `EMAIL_POLL_INTERVAL_SECONDS` | Poll interval | `60` |

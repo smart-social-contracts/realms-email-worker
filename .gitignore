@@ -11,6 +11,10 @@ __pycache__/
 dist/
 build/
 
+# Runtime
+worker.log
+suppress_list.txt
+
 # IDE
 .idea/
 .vscode/
